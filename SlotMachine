@@ -1,0 +1,173 @@
+#include <iostream>
+#include <vector>
+#include <string>
+#include <cstdlib>
+#include <ctime>
+#include <stack>
+#include <thread>
+#include <chrono>
+#include <fstream>
+
+using namespace std;
+
+// Base SlotMachine class
+class SlotMachine {
+protected:
+    vector<string> symbols = {"🍒", "🍋", "🍊", "🍇", "⭐", "💎"};
+    int rewardMultiplier[4] = {0, 0, 2, 10};  // 0, 1, 2, and 3 matching symbols
+
+public:
+    virtual int spin(int betAmount) = 0;  // Pure virtual function to spin the slot machine
+    virtual ~SlotMachine() {}  // Virtual destructor for base class
+};
+
+// Derived class for the game-specific slot machine
+class GameSlotMachine : public SlotMachine {
+private:
+    stack<int> balanceHistory;  // Stack to track balance history
+    int *balance;               // Pointer to track the user's balance
+
+public:
+    GameSlotMachine(int initialBalance) {
+        balance = new int(initialBalance);
+        balanceHistory.push(*balance);
+    }
+
+    ~GameSlotMachine() {
+        delete balance;
+    }
+
+    int spin(int betAmount) override {
+        cout << "Spinning...\n";
+        this_thread::sleep_for(chrono::seconds(1));
+
+        // Generate random symbols
+        vector<string> result;
+        for (int i = 0; i < 3; ++i) {
+            result.push_back(symbols[rand() % symbols.size()]);
+        }
+
+        // Display results
+        cout << result[0] << " | " << result[1] << " | " << result[2] << "\n";
+
+        // Check for matches
+        int matches = 1;
+        if (result[0] == result[1] && result[1] == result[2]) {
+            matches = 3;
+            cout << "🎉 Jackpot! All symbols match! 🎉\n";
+        } else if (result[0] == result[1] || result[1] == result[2] || result[0] == result[2]) {
+            matches = 2;
+            cout << "Two symbols match!\n";
+        } else {
+            cout << "No matches.\n";
+        }
+
+        // Calculate and return reward
+        int reward = betAmount * rewardMultiplier[matches];
+        *balance += reward - betAmount;
+        balanceHistory.push(*balance);  // Save the updated balance to history
+
+        return reward;
+    }
+
+    int getBalance() const {
+        return *balance;
+    }
+
+    void showBalanceHistory() {
+        stack<int> tempStack = balanceHistory;  // Copy to temporary stack
+        cout << "Balance History:\n";
+        while (!tempStack.empty()) {
+            cout << tempStack.top() << " ";
+            tempStack.pop();
+        }
+        cout << "\n";
+    }
+
+    // Function to save balance to a file
+    void saveProgress() const {
+        ofstream outFile("game_save.txt");
+        if (outFile.is_open()) {
+            outFile << *balance;
+            outFile.close();
+            cout << "Game progress saved successfully.\n";
+        } else {
+            cout << "Error: Could not save the game.\n";
+        }
+    }
+
+    // Function to load balance from a file
+    void loadProgress() {
+        ifstream inFile("game_save.txt");
+        if (inFile.is_open()) {
+            inFile >> *balance;
+            inFile.close();
+            balanceHistory.push(*balance);  // Initialize balance history with loaded balance
+            cout << "Game progress loaded successfully. Current balance: " << *balance << " coins.\n";
+        } else {
+            cout << "No saved game found. Starting a new game.\n";
+        }
+    }
+};
+
+// Main game loop
+int main() {
+    srand(static_cast<unsigned>(time(0)));  // Seed random number generator
+    int initialMoney, betAmount;
+    char choice;
+
+    // Create slot machine object dynamically
+    GameSlotMachine *machine = new GameSlotMachine(0);
+
+    // Ask if the user wants to load previous progress
+    cout << "Welcome to the Slot Machine!\n";
+    cout << "Would you like to load your previous progress? (y/n): ";
+    cin >> choice;
+
+    if (choice == 'y' || choice == 'Y') {
+        machine->loadProgress();
+    } else {
+        cout << "How much money do you have? ";
+        cin >> initialMoney;
+        delete machine;  // Delete previous instance
+        machine = new GameSlotMachine(initialMoney);  // Create a new instance with initial balance
+    }
+
+    while (true) {
+        cout << "Enter your bet amount (or 0 to quit): ";
+        cin >> betAmount;
+
+        if (betAmount == 0) {
+            cout << "Would you like to save your progress? (y/n): ";
+            cin >> choice;
+            if (choice == 'y' || choice == 'Y') {
+                machine->saveProgress();
+            }
+            cout << "Thanks for playing! You have " << machine->getBalance() << " coins left.\n";
+            break;
+        }
+
+        if (betAmount > machine->getBalance()) {
+            cout << "You don't have enough money to make that bet.\n";
+            continue;
+        }
+
+        int reward = machine->spin(betAmount);
+        cout << "You won: " << reward << " coins! Your current balance is: " << machine->getBalance() << " coins.\n";
+
+        if (machine->getBalance() <= 0) {
+            cout << "You have run out of money. Game over!\n";
+            break;
+        }
+
+        // Display balance history if requested
+        cout << "Would you like to see your balance history? (y/n): ";
+        cin >> choice;
+        if (choice == 'y' || choice == 'Y') {
+            machine->showBalanceHistory();
+        }
+    }
+
+    delete machine;  // Clean up dynamically allocated memory
+    return 0;
+}
